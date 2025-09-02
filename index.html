@@ -1,25 +1,138 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Пример виджета для amoCRM</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f4; color: #333; }
-    h1 { font-size: 24px; margin-bottom: 10px; }
-    p { font-size: 16px; }
-    .container { max-width: 100%; box-sizing: border-box; }
-    @media (max-width: 400px) { h1 { font-size: 20px; } }
-  </style>
+    <title>Kommo Gross Profit Chart Widget</title>
+    <link rel="stylesheet" type="text/css" href="//fonts.googleapis.com/css?family=Open+Sans:400,300&subset=latin,cyrillic-ext">
+    <link rel="stylesheet" type="text/css" href="//fonts.googleapis.com/css?family=PT+Sans:400,700&subset=latin,cyrillic-ext">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="config.js"></script> <!-- Загружаем config.js -->
+    <style type="text/css">
+        * {
+            -webkit-box-sizing: border-box;
+            -moz-box-sizing: border-box;
+            box-sizing: border-box;
+            text-rendering: geometricPrecision;
+            -webkit-font-smoothing: antialiased;
+        }
+        html, body {
+            padding: 0;
+            margin: 0;
+            font-family: 'PT Sans';
+            color: #2E3640;
+        }
+        .chart-container {
+            padding: 20px;
+            max-width: 100%;
+            height: 300px;
+        }
+        .chart-title {
+            font-size: 15px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .error-message {
+            color: #fe6e6e;
+            font-size: 14px;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Мой кастомный виджет</h1>
-    <p>Здесь может быть ваш контент: графики, данные из API или статический текст.</p>
+    <div class="chart-container">
+        <div class="chart-title">График валовой прибыли</div>
+        <div id="error-message" class="error-message"></div>
+        <canvas id="grossProfitChart"></canvas>
+    </div>
+
     <script>
-      // Пример JS: загрузка данных
-      console.log('Виджет загружен');
+        async function fetchGrossProfitData() {
+            try {
+                const subdomain = 'vvgrigoryan';
+                const accessToken = config.accessToken; // Используем токен из config.js
+                const fieldId = '989292'; // ID поля "Валовая прибыль"
+
+                // Запрос к API для получения сделок
+                const response = await fetch(`https://${subdomain}.kommo.com/api/v4/leads?limit=10`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        throw new Error('Unauthorized: Invalid or expired access token');
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const leads = data._embedded?.leads || [];
+
+                // Проверка на пустой ответ
+                if (leads.length === 0) {
+                    document.getElementById('error-message').textContent = 'Нет данных о сделках';
+                    return;
+                }
+
+                // Извлекаем данные для графика
+                const labels = leads.map(lead => lead.name || `Сделка ${lead.id}`);
+                const grossProfits = leads.map(lead => {
+                    const customField = lead.custom_fields_values?.find(field => field.field_id === parseInt(fieldId));
+                    return customField ? parseFloat(customField.values[0].value) || 0 : 0;
+                });
+
+                // Проверка, есть ли данные для графика
+                if (grossProfits.every(profit => profit === 0)) {
+                    document.getElementById('error-message').textContent = 'Поле "Валовая прибыль" не заполнено в сделках';
+                    return;
+                }
+
+                // Создаём график с Chart.js
+                const ctx = document.getElementById('grossProfitChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Валовая прибыль',
+                            data: grossProfits,
+                            backgroundColor: '#41cfc4',
+                            borderColor: '#2E3640',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Валовая прибыль (₽)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Сделки'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке данных:', error);
+                document.getElementById('error-message').textContent = 'Ошибка загрузки данных: ' + error.message;
+            }
+        }
+
+        // Вызываем функцию при загрузке страницы
+        fetchGrossProfitData();
     </script>
-  </div>
 </body>
 </html>
